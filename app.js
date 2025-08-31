@@ -151,30 +151,31 @@ void main() {
 
   /*** ---------- Compile & Run via dart_sdk_new.js ---------- ***/
   async function compileAndRun() {
-    setStatus('コンパイル中…');
-    UI.console.textContent = '';
+  setStatus('コンパイル中…');
+  UI.console.textContent = '';
 
-    try {
-      const combinedCode = Object.values(state.files).join('\n');
+  try {
+    const combinedCode = Object.values(state.files).join('\n');
+    const encoder = new TextEncoder();
+    const sourceBytes = encoder.encode(combinedCode);
 
-      // Dart SDK 新JS版を直接使用
-      if (!window.dart || !dart.dart2js) {
-        throw new Error('dart_sdk_new.js が読み込まれていません');
-      }
-
-      // compileAsync が非同期コンパイル関数の仮定
-      const js = await dart.dart2js(combinedCode);
-
-      if (!js) throw new Error('コンパイル結果が空です');
-
-      setStatus('実行中…');
-      runInIframe(js);
-      setStatus('完了');
-    } catch (e) {
-      setStatus('コンパイル失敗: ' + e.message, true);
-      appendConsole('error', e.stack || String(e));
+    if (!window.dart || !dart.dart2js) {
+      throw new Error('dart_sdk_new.js が読み込まれていません');
     }
+
+    // Uint8Array 形式で渡す
+    const js = await dart.dart2js(sourceBytes);
+
+    if (!js) throw new Error('コンパイル結果が空です');
+
+    setStatus('実行中…');
+    runInIframe(js);
+    setStatus('完了');
+  } catch (e) {
+    setStatus('コンパイル失敗: ' + e.message, true);
+    appendConsole('error', e.stack || String(e));
   }
+}
 
   function runInIframe(compiledJS) {
     const prelude = `
