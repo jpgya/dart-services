@@ -1,6 +1,6 @@
 /* app.js - Tiny Dart-only playground
    - Multi-file (virtual FS) with localStorage persistence
-   - Analyze / Format / Compile via dart-services v2
+   - Compile via dart_sdk_new.js
    - Mobile-friendly UI with console & live preview iframe
 */
 (() => {
@@ -9,12 +9,7 @@
   /*** ---------- Constants ---------- ***/
   const LS_KEY = 'dartpad_mini_project_v1';
   const DEFAULT_FILES = {
-    'main.dart': `// Welcome to mini DartPad (Dart only)
-// You can add more files with the + button (e.g., utils.dart)
-// Then import them in main.dart:
-//   import 'utils.dart';
-
-import 'dart:html';
+    'main.dart': `import 'dart:html';
 
 void main() {
   querySelector('#app')?.text = 'Hello from Dart!';
@@ -22,12 +17,6 @@ void main() {
 }
 `,
   };
-
-  // Try multiple backends for robustness (CORS-enabled)
-  const BACKENDS = [
-  'https://dartpad.vigyanfv.workers.dev'
-];
-
 
   const UI = {
     fileList: document.getElementById('file-list'),
@@ -66,7 +55,6 @@ void main() {
   function persist() {
     localStorage.setItem(LS_KEY, JSON.stringify(state));
   }
-
   function ensureActiveExists() {
     if (!state.files[state.active]) {
       state.active = Object.keys(state.files)[0] || 'main.dart';
@@ -81,10 +69,8 @@ void main() {
       li.className = 'file-item' + (name === state.active ? ' active' : '');
       li.textContent = name;
       li.title = 'クリックで切替 / 長押しでリネーム';
-      li.addEventListener('click', () => {
-        setActive(name);
-      });
-      // Long press rename
+      li.addEventListener('click', () => setActive(name));
+
       let pressTimer;
       li.addEventListener('mousedown', () => {
         pressTimer = setTimeout(() => promptRename(name), 600);
@@ -92,11 +78,12 @@ void main() {
       ['mouseup', 'mouseleave'].forEach(ev =>
         li.addEventListener(ev, () => clearTimeout(pressTimer))
       );
-      // Context menu: delete
+
       li.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         promptDelete(name);
       });
+
       UI.fileList.appendChild(li);
     });
   }
@@ -113,11 +100,9 @@ void main() {
 
   function refreshLineNumbers() {
     const lines = UI.editor.value.split('\n').length;
-    const nums = Array.from({ length: lines }, (_, i) => (i + 1)).join('\n');
-    UI.lineNums.textContent = nums;
+    UI.lineNums.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
   }
 
-  // Debounce line numbers for performance
   let lnTimer;
   UI.editor.addEventListener('input', () => {
     state.files[state.active] = UI.editor.value;
@@ -133,14 +118,8 @@ void main() {
   function promptNewFile() {
     const name = prompt('新しいDartファイル名を入力 (例: utils.dart)');
     if (!name) return;
-    if (!name.endsWith('.dart')) {
-      alert('拡張子は .dart にしてください');
-      return;
-    }
-    if (state.files[name]) {
-      alert('同名ファイルが既にあります');
-      return;
-    }
+    if (!name.endsWith('.dart')) { alert('拡張子は .dart にしてください'); return; }
+    if (state.files[name]) { alert('同名ファイルが既にあります'); return; }
     state.files[name] = `// ${name}\n`;
     persist();
     setActive(name);
@@ -150,14 +129,8 @@ void main() {
   function promptRename(oldName) {
     const name = prompt('新しいファイル名', oldName);
     if (!name || name === oldName) return;
-    if (!name.endsWith('.dart')) {
-      alert('拡張子は .dart にしてください');
-      return;
-    }
-    if (state.files[name]) {
-      alert('同名ファイルが既にあります');
-      return;
-    }
+    if (!name.endsWith('.dart')) { alert('拡張子は .dart にしてください'); return; }
+    if (state.files[name]) { alert('同名ファイルが既にあります'); return; }
     state.files[name] = state.files[oldName];
     delete state.files[oldName];
     if (state.active === oldName) state.active = name;
@@ -167,10 +140,7 @@ void main() {
   }
 
   function promptDelete(name) {
-    if (Object.keys(state.files).length === 1) {
-      alert('最低1ファイルは必要です');
-      return;
-    }
+    if (Object.keys(state.files).length === 1) { alert('最低1ファイルは必要です'); return; }
     if (!confirm(`${name} を削除しますか？`)) return;
     delete state.files[name];
     ensureActiveExists();
@@ -179,101 +149,23 @@ void main() {
     setActive(state.active);
   }
 
-  /*** ---------- Backend helpers ---------- ***/
-  async function postJSON(path, payload) {
-    let lastErr;
-    for (const base of BACKENDS) {
-      try {
-        const res = await fetch(`${base}/${path}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        return await res.json();
-      } catch (e) {
-        lastErr = e;
-        // Try next backend
-      }
-    }
-    throw lastErr || new Error('All backends failed');
-  }
-
-  // Some endpoints accept {source}, some accept {sources:{name:code}}
-  function buildSourcePayload(singleOnly = false) {
-    const files = { ...state.files };
-    // Always ensure main.dart exists
-    if (!files['main.dart']) {
-      files['main.dart'] = DEFAULT_FILES['main.dart'];
-    }
-    const payload = singleOnly
-      ? { source: files['main.dart'] }
-      : { sources: files, source: files['main.dart'] }; // include both for compatibility
-    return payload;
-  }
-
-  /*** ---------- Analyze / Format / Compile ---------- ***/
-  async function analyze() {
-    setStatus('解析中…');
-    try {
-      const payload = buildSourcePayload();
-      // /analyze expects SourceRequest; including both fields for safety
-      const json = await postJSON('analyze', payload);
-      renderAnalysis(json);
-      setStatus('解析完了');
-    } catch (e) {
-      setStatus('解析失敗: ' + e.message, true);
-    }
-  }
-
-  function renderAnalysis(result) {
-    UI.console.textContent = ''; // clear
-    const out = [];
-    const probs = (result.issues || result.issues?.issues) || [];
-    if (!probs.length) {
-      out.push('✅ 問題は見つかりませんでした');
-    } else {
-      for (const p of probs) {
-        // Known shape: {kind, line, charStart, message, location, sourceName}
-        const file = p.sourceName || p.location?.sourceName || state.active;
-        const line = p.line || p.location?.line || '?';
-        const severity = p.kind || p.severity || 'info';
-        out.push(`[${severity}] ${file}:${line}\n  ${p.message}`);
-      }
-    }
-    UI.console.textContent = out.join('\n');
-  }
-
-  async function formatCurrentFile() {
-    setStatus('整形中…');
-    try {
-      const source = UI.editor.value;
-      const json = await postJSON('format', { source });
-      const formatted = json.newString || json.newStringFormatted || json.source || source;
-      state.files[state.active] = formatted;
-      UI.editor.value = formatted;
-      refreshLineNumbers();
-      persist();
-      setStatus('整形完了');
-    } catch (e) {
-      setStatus('整形失敗: ' + e.message, true);
-    }
-  }
-
+  /*** ---------- Compile & Run via dart_sdk_new.js ---------- ***/
   async function compileAndRun() {
     setStatus('コンパイル中…');
     UI.console.textContent = '';
+
     try {
-      const payload = buildSourcePayload();
-      // Prefer dart2js (/compile) because it yields single-file JS
-      let json = await postJSON('compile', payload);
-      let js = json.result || json.compiledJS || json.compiledJavascript || json.js;
-      // If the first attempt didn't return code, try with {source} only
-      if (!js) {
-        json = await postJSON('compile', buildSourcePayload(true));
-        js = json.result || json.compiledJS || json.compiledJavascript || json.js;
+      const combinedCode = Object.values(state.files).join('\n');
+
+      // Dart SDK 新JS版を直接使用
+      if (!window.dart || !dart.dart2js) {
+        throw new Error('dart_sdk_new.js が読み込まれていません');
       }
-      if (!js) throw new Error('Compiled JavaScript not found in response');
+
+      // compileAsync が非同期コンパイル関数の仮定
+      const js = await dart.dart2js(combinedCode);
+
+      if (!js) throw new Error('コンパイル結果が空です');
 
       setStatus('実行中…');
       runInIframe(js);
@@ -284,7 +176,6 @@ void main() {
     }
   }
 
-  /*** ---------- Preview Iframe ---------- ***/
   function runInIframe(compiledJS) {
     const prelude = `
       (function(){
@@ -305,16 +196,12 @@ void main() {
     <script>${compiledJS}<\/script>
   </body>
 </html>`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    UI.preview.src = url;
+    UI.preview.src = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   }
 
   window.addEventListener('message', (e) => {
     if (!e?.data) return;
-    if (e.data.type === 'console') {
-      appendConsole(e.data.level || 'log', e.data.text);
-    }
+    if (e.data.type === 'console') appendConsole(e.data.level || 'log', e.data.text);
   });
 
   function appendConsole(level, text) {
@@ -331,9 +218,7 @@ void main() {
     UI.status.textContent = msg;
     UI.status.dataset.kind = isError ? 'error' : 'ok';
     clearTimeout(statusTimer);
-    if (!isError) {
-      statusTimer = setTimeout(() => (UI.status.textContent = ''), 3000);
-    }
+    if (!isError) statusTimer = setTimeout(() => (UI.status.textContent = ''), 3000);
   }
 
   /*** ---------- Import / Export / Reset ---------- ***/
@@ -379,8 +264,6 @@ void main() {
   /*** ---------- Event wiring ---------- ***/
   UI.addFileBtn.addEventListener('click', promptNewFile);
   UI.runBtn.addEventListener('click', compileAndRun);
-  UI.analyzeBtn.addEventListener('click', analyze);
-  UI.formatBtn.addEventListener('click', formatCurrentFile);
   UI.exportBtn.addEventListener('click', exportProject);
   UI.importBtn.addEventListener('click', () => UI.importInput.click());
   UI.importInput.addEventListener('change', () => {
@@ -393,6 +276,10 @@ void main() {
   UI.drawerToggle.addEventListener('click', () => {
     document.body.classList.toggle('drawer-open');
   });
+
+  // Disable analyze / format (SDK だけでは未対応)
+  UI.analyzeBtn.disabled = true;
+  UI.formatBtn.disabled = true;
 
   // Initial render
   renderFileList();
