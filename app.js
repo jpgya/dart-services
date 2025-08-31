@@ -25,7 +25,7 @@ void main() {
 
   // Try multiple backends for robustness (CORS-enabled)
   const BACKENDS = [
-  'https://dart-services.appspot.com/api/dartservices/v2'
+  'https://dartpad.vigyanfv.workers.dev'
 ];
 
 
