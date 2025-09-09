@@ -155,9 +155,11 @@ void main() {
   UI.console.textContent = '';
 
   try {
-    const combinedCode = Object.values(state.files).join('\n');
+    // main.dartのみを実行対象に
+    const mainCode = state.files['main.dart'];
+    if (!mainCode) throw new Error('main.dartが存在しません');
     const encoder = new TextEncoder();
-    const sourceBytes = encoder.encode(combinedCode);
+    const sourceBytes = encoder.encode(mainCode);
 
     if (!window.dart || !dart.dart2js) {
       throw new Error('dart_sdk_new.js が読み込まれていません');
@@ -174,6 +176,10 @@ void main() {
   } catch (e) {
     setStatus('コンパイル失敗: ' + e.message, true);
     appendConsole('error', e.stack || String(e));
+    UI.console.appendChild(Object.assign(document.createElement('div'), {
+      className: 'log error',
+      textContent: '[error] ' + (e.message || e)
+    }));
   }
 }
 
